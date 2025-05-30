@@ -716,7 +716,7 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [sortBy, setSortBy] = useState('date_added');
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
   useEffect(() => {
     if (user) {
@@ -727,29 +727,47 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
   }, [isWishlist, user]);
 
   const fetchCollection = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await axios.get(`${API}/collection?is_wishlist=${isWishlist}`);
       setCollection(response.data);
+      
+      // Refresh profile to update counts
+      await refreshProfile();
+      onRefresh && onRefresh();
     } catch (error) {
       console.error('Error fetching collection:', error);
+      setCollection([]);
     } finally {
       setLoading(false);
     }
   };
 
   const removeFromCollection = async (collectionId) => {
+    if (!user) return;
+
     try {
       await axios.delete(`${API}/collection/${collectionId}`);
-      fetchCollection();
-      onRefresh();
+      await fetchCollection(); // This will also refresh the profile
     } catch (error) {
       console.error('Error removing from collection:', error);
+      alert('Failed to remove game from collection. Please try again.');
     }
   };
 
+  // Show login prompt if user is not authenticated
   if (!user) {
-    return <LoginPrompt onLogin={() => {}} />;
+    return (
+      <LoginPrompt 
+        onLogin={() => window.dispatchEvent(new CustomEvent('openAuthModal', { detail: { mode: 'login' } }))}
+        onRegister={() => window.dispatchEvent(new CustomEvent('openAuthModal', { detail: { mode: 'register' } }))}
+      />
+    );
   }
 
   if (loading) {
@@ -805,6 +823,26 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
 
   return (
     <div>
+      {/* Collection Stats */}
+      <div className="mb-8 bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-2xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">
+              {filteredAndSortedCollection.length} {isWishlist ? 'Wishlist' : 'Collection'} Games
+            </h3>
+            <p className="text-gray-600">
+              {filter && `Filtered from ${collection.length} total games`}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold text-blue-600">{user.username}</p>
+            <p className="text-sm text-gray-600">
+              {user.collection_count} owned • {user.wishlist_count} wishlist
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Filters and Sorting */}
       <div className="mb-8 bg-white p-6 rounded-2xl shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
@@ -910,7 +948,7 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
                 </span>
                 <button
                   onClick={() => removeFromCollection(item.id)}
-                  className="text-red-500 hover:text-red-700 text-sm font-medium transition-colors duration-200"
+                  className="text-red-500 hover:text-red-700 text-sm font-medium transition-colors duration-200 hover:bg-red-50 px-2 py-1 rounded"
                 >
                   Remove
                 </button>
