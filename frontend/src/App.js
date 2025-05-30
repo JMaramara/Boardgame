@@ -879,19 +879,6 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredAndSortedCollection.map((item) => (
           <div key={item.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 group relative">
-            {/* Delete button overlay - visible on hover */}
-            <div className="absolute top-4 left-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <button
-                onClick={() => removeFromCollection(item.id, item.game.name)}
-                className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110"
-                title={`Remove ${item.game.name} from ${isWishlist ? 'wishlist' : 'collection'}`}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-
             <div className="relative">
               {item.game.thumbnail_url ? (
                 <img 
@@ -904,12 +891,27 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
                   <span className="text-4xl">🎲</span>
                 </div>
               )}
+              
+              {/* Status badge */}
               <div className="absolute top-4 right-4">
                 {isWishlist ? (
                   <span className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-medium">Wishlist</span>
                 ) : (
                   <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">Owned</span>
                 )}
+              </div>
+
+              {/* Quick Delete Button - Always visible on mobile, hover on desktop */}
+              <div className="absolute top-4 left-4">
+                <button
+                  onClick={() => removeFromCollection(item.id, item.game.name)}
+                  className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110 md:opacity-0 md:group-hover:opacity-100"
+                  title={`Remove ${item.game.name} from ${isWishlist ? 'wishlist' : 'collection'}`}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
             
@@ -959,16 +961,17 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
                 </div>
               )}
 
+              {/* Bottom section with date and remove button */}
               <div className="flex justify-between items-center pt-4 border-t border-gray-100">
                 <span className="text-xs text-gray-500">
                   Added {new Date(item.date_added).toLocaleDateString()}
                 </span>
                 <button
                   onClick={() => removeFromCollection(item.id, item.game.name)}
-                  className="flex items-center space-x-1 text-red-500 hover:text-red-700 hover:bg-red-50 text-sm font-medium transition-all duration-200 px-3 py-2 rounded-lg border border-red-200 hover:border-red-300"
+                  className="flex items-center space-x-1 bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-all duration-200 px-3 py-2 rounded-lg shadow-md hover:shadow-lg transform hover:scale-105"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                   <span>Remove</span>
                 </button>
