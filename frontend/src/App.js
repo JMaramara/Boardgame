@@ -968,16 +968,23 @@ function App() {
   const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
   const { user, loading } = useAuth();
 
-  const fetchCounts = async () => {
-    // This will trigger a re-fetch in the Collection components
-  };
+  // Listen for custom events to open auth modal
+  useEffect(() => {
+    const handleOpenAuthModal = (event) => {
+      const { mode } = event.detail;
+      setAuthModal({ isOpen: true, mode });
+    };
+
+    window.addEventListener('openAuthModal', handleOpenAuthModal);
+    return () => window.removeEventListener('openAuthModal', handleOpenAuthModal);
+  }, []);
 
   const handleGameSelect = (game) => {
     setSelectedGame(game);
   };
 
   const handleAddToCollection = () => {
-    fetchCounts();
+    // Collections will auto-refresh through their own useEffect
   };
 
   const openAuthModal = (mode = 'login') => {
@@ -1155,7 +1162,7 @@ function App() {
               <h2 className="text-4xl font-bold text-gray-900 mb-4">My Collection</h2>
               <p className="text-xl text-gray-600">Games you own and love</p>
             </div>
-            <Collection isWishlist={false} onRefresh={fetchCounts} />
+            <Collection isWishlist={false} onRefresh={handleAddToCollection} />
           </div>
         )}
 
@@ -1165,7 +1172,7 @@ function App() {
               <h2 className="text-4xl font-bold text-gray-900 mb-4">My Wishlist</h2>
               <p className="text-xl text-gray-600">Games you're dreaming of adding to your collection</p>
             </div>
-            <Collection isWishlist={true} onRefresh={fetchCounts} />
+            <Collection isWishlist={true} onRefresh={handleAddToCollection} />
           </div>
         )}
       </div>
