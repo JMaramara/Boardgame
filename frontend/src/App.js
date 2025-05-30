@@ -11,43 +11,59 @@ const AuthContext = createContext();
 // Auth Provider Component
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      fetchProfile();
-    } else {
+    // Check for stored token on app load
+    const initializeAuth = async () => {
+      const storedToken = localStorage.getItem('gameshelf_token');
+      
+      if (storedToken) {
+        try {
+          // Set token in axios headers
+          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          setToken(storedToken);
+          
+          // Verify token and fetch profile
+          const response = await axios.get(`${API}/auth/profile`);
+          setUser(response.data);
+        } catch (error) {
+          console.error('Token validation failed:', error);
+          // Token is invalid, clear it
+          localStorage.removeItem('gameshelf_token');
+          delete axios.defaults.headers.common['Authorization'];
+          setToken(null);
+          setUser(null);
+        }
+      }
       setLoading(false);
-    }
-  }, [token]);
+    };
 
-  const fetchProfile = async () => {
-    try {
-      const response = await axios.get(`${API}/auth/profile`);
-      setUser(response.data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      logout();
-    } finally {
-      setLoading(false);
-    }
-  };
+    initializeAuth();
+  }, []);
 
   const login = async (username, password) => {
     try {
       const response = await axios.post(`${API}/auth/login`, { username, password });
       const { access_token } = response.data;
       
-      localStorage.setItem('token', access_token);
+      // Store token
+      localStorage.setItem('gameshelf_token', access_token);
       setToken(access_token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
       
-      await fetchProfile();
+      // Fetch and set user profile
+      const profileResponse = await axios.get(`${API}/auth/profile`);
+      setUser(profileResponse.data);
+      
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.detail || 'Login failed' };
+      console.error('Login error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.detail || 'Login failed. Please check your credentials.' 
+      };
     }
   };
 
@@ -56,26 +72,55 @@ const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API}/auth/register`, { username, email, password });
       const { access_token } = response.data;
       
-      localStorage.setItem('token', access_token);
+      // Store token
+      localStorage.setItem('gameshelf_token', access_token);
       setToken(access_token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
       
-      await fetchProfile();
+      // Fetch and set user profile
+      const profileResponse = await axios.get(`${API}/auth/profile`);
+      setUser(profileResponse.data);
+      
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.detail || 'Registration failed' };
+      console.error('Registration error:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.detail || 'Registration failed. Please try again.' 
+      };
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('gameshelf_token');
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
   };
 
+  const refreshProfile = async () => {
+    if (token) {
+      try {
+        const response = await axios.get(`${API}/auth/profile`);
+        setUser(response.data);
+      } catch (error) {
+        console.error('Failed to refresh profile:', error);
+        // If profile refresh fails, logout user
+        logout();
+      }
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      token, 
+      login, 
+      register, 
+      logout, 
+      loading,
+      refreshProfile
+    }}>
       {children}
     </AuthContext.Provider>
   );
