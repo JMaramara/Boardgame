@@ -133,34 +133,67 @@ const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
   const [error, setError] = useState('');
   const { login, register } = useAuth();
 
+  useEffect(() => {
+    // Reset form when modal opens/closes or mode changes
+    if (isOpen) {
+      setFormData({ username: '', email: '', password: '' });
+      setError('');
+      setLoading(false);
+    }
+  }, [isOpen, mode]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setLoading(true);
     setError('');
 
-    const result = mode === 'login' 
-      ? await login(formData.username, formData.password)
-      : await register(formData.username, formData.email, formData.password);
+    try {
+      const result = mode === 'login' 
+        ? await login(formData.username, formData.password)
+        : await register(formData.username, formData.email, formData.password);
 
-    if (result.success) {
-      onClose();
-      setFormData({ username: '', email: '', password: '' });
-    } else {
-      setError(result.error);
+      if (result.success) {
+        onClose();
+        setFormData({ username: '', email: '', password: '' });
+      } else {
+        setError(result.error);
+      }
+    } catch (error) {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleOverlayClick = (e) => {
+    // Only close if clicking the overlay, not the modal content
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl">
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(4px)' }}
+      onClick={handleOverlayClick}
+    >
+      <div 
+        className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl relative z-[101]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
             {mode === 'login' ? 'Welcome Back!' : 'Join GameShelf'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-gray-600 p-1 transition-colors duration-200"
+            type="button"
+          >
             <CloseIcon />
           </button>
         </div>
@@ -181,6 +214,8 @@ const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
               placeholder="Enter your username"
+              disabled={loading}
+              autoComplete="username"
             />
           </div>
 
@@ -194,6 +229,8 @@ const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
                 placeholder="Enter your email"
+                disabled={loading}
+                autoComplete="email"
               />
             </div>
           )}
@@ -208,13 +245,15 @@ const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
               className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
               placeholder="Enter your password"
               minLength={mode === 'register' ? 6 : undefined}
+              disabled={loading}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             {loading ? (
               <div className="flex items-center justify-center">
@@ -229,8 +268,10 @@ const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
 
         <div className="mt-6 text-center">
           <button
+            type="button"
             onClick={onSwitchMode}
-            className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+            disabled={loading}
+            className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {mode === 'login' 
               ? "Don't have an account? Sign up" 
