@@ -748,8 +748,12 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
     }
   };
 
-  const removeFromCollection = async (collectionId) => {
+  const removeFromCollection = async (collectionId, gameName) => {
     if (!user) return;
+
+    // Show confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to remove "${gameName}" from your ${isWishlist ? 'wishlist' : 'collection'}?`);
+    if (!confirmed) return;
 
     try {
       await axios.delete(`${API}/collection/${collectionId}`);
