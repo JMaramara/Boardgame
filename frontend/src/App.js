@@ -900,23 +900,6 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
                   <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">Owned</span>
                 )}
               </div>
-
-              {/* Quick Delete Button - Always visible */}
-              <div className="absolute top-4 left-4 z-20">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    removeFromCollection(item.id, item.game.name);
-                  }}
-                  className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110 opacity-90 hover:opacity-100"
-                  title={`Remove ${item.game.name} from ${isWishlist ? 'wishlist' : 'collection'}`}
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
             </div>
             
             <div className="p-6">
