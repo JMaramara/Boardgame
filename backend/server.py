@@ -306,6 +306,63 @@ class BGGService:
 async def root():
     return {"message": "Board Game Catalog API"}
 
+# Authentication Routes
+@api_router.post("/auth/register", response_model=Token)
+async def register(user_data: UserCreate):
+    """Register a new user"""
+    # Check if user exists
+    existing_user = await db.users.find_one({"$or": [{"username": user_data.username}, {"email": user_data.email}]})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username or email already registered")
+    
+    # Create new user
+    hashed_password = get_password_hash(user_data.password)
+    user = User(
+        username=user_data.username,
+        email=user_data.email
+    )
+    
+    user_dict = user.dict()
+    user_dict["password"] = hashed_password
+    
+    await db.users.insert_one(user_dict)
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@api_router.post("/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    """Login user"""
+    user = await db.users.find_one({"username": user_data.username})
+    if not user or not verify_password(user_data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user["username"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@api_router.get("/auth/profile", response_model=UserProfile)
+async def get_profile(current_user: User = Depends(get_current_user)):
+    """Get current user profile with collection stats"""
+    collection_count = await db.collection.count_documents({"user_id": current_user.id, "is_wishlist": False})
+    wishlist_count = await db.collection.count_documents({"user_id": current_user.id, "is_wishlist": True})
+    
+    return UserProfile(
+        id=current_user.id,
+        username=current_user.username,
+        email=current_user.email,
+        created_at=current_user.created_at,
+        collection_count=collection_count,
+        wishlist_count=wishlist_count
+    )
+
+# Game Search Routes (No auth required)
 @api_router.get("/search", response_model=List[GameBasic])
 async def search_games(q: str = Query(..., min_length=2)):
     """Search for games on BoardGameGeek"""
@@ -319,9 +376,13 @@ async def get_game_details(bgg_id: str):
         raise HTTPException(status_code=404, detail="Game not found")
     return game
 
+# Collection Routes (Auth optional for now, required for modifications)
 @api_router.post("/collection", response_model=CollectionGame)
-async def add_to_collection(request: AddToCollectionRequest):
+async def add_to_collection(request: AddToCollectionRequest, current_user: Optional[User] = Depends(get_current_user_optional)):
     """Add a game to the collection"""
+    # For now, we'll use a default user_id if not authenticated
+    user_id = current_user.id if current_user else "anonymous"
+    
     # Get game details from BGG
     game = await BGGService.get_game_details(request.bgg_id)
     if not game:
@@ -329,6 +390,7 @@ async def add_to_collection(request: AddToCollectionRequest):
     
     # Check if already in collection
     existing = await db.collection.find_one({
+        "user_id": user_id,
         "game.bgg_id": request.bgg_id, 
         "is_wishlist": request.is_wishlist
     })
@@ -344,27 +406,49 @@ async def add_to_collection(request: AddToCollectionRequest):
         wishlist_priority=request.wishlist_priority
     )
     
+    # Add user_id to the document
+    collection_dict = collection_game.dict()
+    collection_dict["user_id"] = user_id
+    
     # Save to database
-    await db.collection.insert_one(collection_game.dict())
+    await db.collection.insert_one(collection_dict)
     return collection_game
 
 @api_router.get("/collection", response_model=List[CollectionGame])
-async def get_collection(is_wishlist: bool = False):
+async def get_collection(is_wishlist: bool = False, current_user: Optional[User] = Depends(get_current_user_optional)):
     """Get user's collection or wishlist"""
-    collection = await db.collection.find({"is_wishlist": is_wishlist}).to_list(1000)
+    user_id = current_user.id if current_user else "anonymous"
+    
+    collection = await db.collection.find({
+        "user_id": user_id,
+        "is_wishlist": is_wishlist
+    }).to_list(1000)
+    
     return [CollectionGame(**item) for item in collection]
 
 @api_router.delete("/collection/{collection_id}")
-async def remove_from_collection(collection_id: str):
+async def remove_from_collection(collection_id: str, current_user: Optional[User] = Depends(get_current_user_optional)):
     """Remove a game from collection"""
-    result = await db.collection.delete_one({"id": collection_id})
+    user_id = current_user.id if current_user else "anonymous"
+    
+    result = await db.collection.delete_one({
+        "id": collection_id,
+        "user_id": user_id
+    })
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Collection item not found")
     return {"message": "Game removed from collection"}
 
 @api_router.put("/collection/{collection_id}", response_model=CollectionGame)
-async def update_collection_item(collection_id: str, user_notes: Optional[str] = None, custom_tags: List[str] = None):
+async def update_collection_item(
+    collection_id: str, 
+    user_notes: Optional[str] = None, 
+    custom_tags: List[str] = None,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
     """Update collection item notes and tags"""
+    user_id = current_user.id if current_user else "anonymous"
+    
     update_data = {}
     if user_notes is not None:
         update_data["user_notes"] = user_notes
@@ -372,7 +456,7 @@ async def update_collection_item(collection_id: str, user_notes: Optional[str] =
         update_data["custom_tags"] = custom_tags
     
     result = await db.collection.find_one_and_update(
-        {"id": collection_id},
+        {"id": collection_id, "user_id": user_id},
         {"$set": update_data},
         return_document=True
     )
@@ -381,6 +465,47 @@ async def update_collection_item(collection_id: str, user_notes: Optional[str] =
         raise HTTPException(status_code=404, detail="Collection item not found")
     
     return CollectionGame(**result)
+
+# Public Profile Routes
+@api_router.get("/public/{username}", response_model=UserProfile)
+async def get_public_profile(username: str):
+    """Get public user profile"""
+    user = await db.users.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.get("is_public", False):
+        raise HTTPException(status_code=403, detail="Profile is private")
+    
+    collection_count = await db.collection.count_documents({"user_id": user["id"], "is_wishlist": False})
+    wishlist_count = await db.collection.count_documents({"user_id": user["id"], "is_wishlist": True})
+    
+    return UserProfile(
+        id=user["id"],
+        username=user["username"],
+        email=user["email"],  # Consider hiding email in public profiles
+        created_at=user["created_at"],
+        collection_count=collection_count,
+        wishlist_count=wishlist_count,
+        is_public=user.get("is_public", False)
+    )
+
+@api_router.get("/public/{username}/collection", response_model=List[CollectionGame])
+async def get_public_collection(username: str, is_wishlist: bool = False):
+    """Get public user's collection"""
+    user = await db.users.find_one({"username": username})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.get("is_public", False):
+        raise HTTPException(status_code=403, detail="Profile is private")
+    
+    collection = await db.collection.find({
+        "user_id": user["id"],
+        "is_wishlist": is_wishlist
+    }).to_list(1000)
+    
+    return [CollectionGame(**item) for item in collection]
 
 
 # Include the router in the main app
