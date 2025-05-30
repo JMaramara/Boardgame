@@ -371,19 +371,32 @@ const UserMenu = () => {
 };
 
 // Login Prompt Component
-const LoginPrompt = ({ onLogin }) => (
+const LoginPrompt = ({ onLogin, onRegister }) => (
   <div className="text-center py-16">
     <div className="text-6xl mb-6">🔐</div>
     <h3 className="text-2xl font-bold text-gray-900 mb-4">Sign In to Build Your Collection</h3>
     <p className="text-gray-600 text-lg mb-8 max-w-md mx-auto">
       Create an account to save your games, build wishlists, and organize your board game library.
     </p>
-    <button
-      onClick={onLogin}
-      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-    >
-      Sign In or Create Account
-    </button>
+    <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-sm mx-auto">
+      <button
+        onClick={onLogin}
+        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+      >
+        Sign In
+      </button>
+      <button
+        onClick={onRegister}
+        className="bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-semibold py-3 px-6 rounded-2xl transition-all duration-200"
+      >
+        Create Account
+      </button>
+    </div>
+    <div className="mt-8 max-w-md mx-auto bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-2xl">
+      <p className="text-sm text-gray-700">
+        💡 <strong>Tip:</strong> Use the search tab to browse games from BoardGameGeek's database. Sign in to save them to your personal library.
+      </p>
+    </div>
   </div>
 );
 
