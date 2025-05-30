@@ -1,9 +1,93 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import axios from 'axios';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+// Auth Context
+const AuthContext = createContext();
+
+// Auth Provider Component
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      fetchProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await axios.get(`${API}/auth/profile`);
+      setUser(response.data);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (username, password) => {
+    try {
+      const response = await axios.post(`${API}/auth/login`, { username, password });
+      const { access_token } = response.data;
+      
+      localStorage.setItem('token', access_token);
+      setToken(access_token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      
+      await fetchProfile();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.response?.data?.detail || 'Login failed' };
+    }
+  };
+
+  const register = async (username, email, password) => {
+    try {
+      const response = await axios.post(`${API}/auth/register`, { username, email, password });
+      const { access_token } = response.data;
+      
+      localStorage.setItem('token', access_token);
+      setToken(access_token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      
+      await fetchProfile();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.response?.data?.detail || 'Registration failed' };
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setUser(null);
+    delete axios.defaults.headers.common['Authorization'];
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
 // Icons Components
 const SearchIcon = () => (
@@ -18,6 +102,12 @@ const CloseIcon = () => (
   </svg>
 );
 
+const UserIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+);
+
 const StarIcon = ({ filled = false }) => (
   <svg className={`h-5 w-5 ${filled ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
@@ -26,7 +116,7 @@ const StarIcon = ({ filled = false }) => (
 
 const UsersIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0z" />
   </svg>
 );
 
@@ -34,6 +124,181 @@ const ClockIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
+);
+
+// Authentication Modal
+const AuthModal = ({ isOpen, onClose, mode = 'login', onSwitchMode }) => {
+  const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { login, register } = useAuth();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    const result = mode === 'login' 
+      ? await login(formData.username, formData.password)
+      : await register(formData.username, formData.email, formData.password);
+
+    if (result.success) {
+      onClose();
+      setFormData({ username: '', email: '', password: '' });
+    } else {
+      setError(result.error);
+    }
+    setLoading(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {mode === 'login' ? 'Welcome Back!' : 'Join GameShelf'}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <CloseIcon />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+            <input
+              type="text"
+              required
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+              placeholder="Enter your username"
+            />
+          </div>
+
+          {mode === 'register' && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                placeholder="Enter your email"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+            <input
+              type="password"
+              required
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+              placeholder="Enter your password"
+              minLength={mode === 'register' ? 6 : undefined}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                {mode === 'login' ? 'Signing In...' : 'Creating Account...'}
+              </div>
+            ) : (
+              mode === 'login' ? 'Sign In' : 'Create Account'
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={onSwitchMode}
+            className="text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+          >
+            {mode === 'login' 
+              ? "Don't have an account? Sign up" 
+              : "Already have an account? Sign in"
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// User Menu Component
+const UserMenu = () => {
+  const { user, logout } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-all duration-200"
+      >
+        <UserIcon />
+        <span className="font-medium">{user.username}</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 min-w-48 z-50">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="font-semibold text-gray-900">{user.username}</p>
+            <p className="text-sm text-gray-500">{user.email}</p>
+            <div className="text-xs text-gray-500 mt-1">
+              {user.collection_count} games • {user.wishlist_count} wishlist
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              logout();
+              setIsOpen(false);
+            }}
+            className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 transition-all duration-200"
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Login Prompt Component
+const LoginPrompt = ({ onLogin }) => (
+  <div className="text-center py-16">
+    <div className="text-6xl mb-6">🔐</div>
+    <h3 className="text-2xl font-bold text-gray-900 mb-4">Sign In to Build Your Collection</h3>
+    <p className="text-gray-600 text-lg mb-8 max-w-md mx-auto">
+      Create an account to save your games, build wishlists, and organize your board game library.
+    </p>
+    <button
+      onClick={onLogin}
+      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+    >
+      Sign In or Create Account
+    </button>
+  </div>
 );
 
 // Game Search Component
@@ -125,6 +390,7 @@ const GameDetailsModal = ({ game, onClose, onAddToCollection }) => {
   const [customTags, setCustomTags] = useState('');
   const [isWishlist, setIsWishlist] = useState(false);
   const [adding, setAdding] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchGameDetails();
@@ -142,6 +408,11 @@ const GameDetailsModal = ({ game, onClose, onAddToCollection }) => {
   };
 
   const handleAddToCollection = async () => {
+    if (!user) {
+      alert('Please sign in to add games to your collection.');
+      return;
+    }
+
     setAdding(true);
     try {
       const tags = customTags.split(',').map(tag => tag.trim()).filter(tag => tag);
@@ -264,66 +535,75 @@ const GameDetailsModal = ({ game, onClose, onAddToCollection }) => {
             )}
 
             {/* Add to collection form */}
-            <div className="border-t pt-8">
-              <h3 className="text-xl font-bold mb-6 text-gray-900">Add to Your Library</h3>
-              
-              <div className="space-y-6">
-                <div className="flex items-center p-4 bg-gray-50 rounded-2xl">
-                  <input
-                    type="checkbox"
-                    id="wishlist"
-                    checked={isWishlist}
-                    onChange={(e) => setIsWishlist(e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor="wishlist" className="ml-3 text-gray-900 font-medium">
-                    Add to Wishlist instead of Collection
-                  </label>
-                </div>
+            {user && (
+              <div className="border-t pt-8">
+                <h3 className="text-xl font-bold mb-6 text-gray-900">Add to Your Library</h3>
+                
+                <div className="space-y-6">
+                  <div className="flex items-center p-4 bg-gray-50 rounded-2xl">
+                    <input
+                      type="checkbox"
+                      id="wishlist"
+                      checked={isWishlist}
+                      onChange={(e) => setIsWishlist(e.target.checked)}
+                      className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="wishlist" className="ml-3 text-gray-900 font-medium">
+                      Add to Wishlist instead of Collection
+                    </label>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Personal Notes
-                  </label>
-                  <textarea
-                    value={userNotes}
-                    onChange={(e) => setUserNotes(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 resize-none"
-                    rows="3"
-                    placeholder="What do you think about this game? Add your personal thoughts..."
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Personal Notes
+                    </label>
+                    <textarea
+                      value={userNotes}
+                      onChange={(e) => setUserNotes(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 resize-none"
+                      rows="3"
+                      placeholder="What do you think about this game? Add your personal thoughts..."
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Custom Tags
-                  </label>
-                  <input
-                    type="text"
-                    value={customTags}
-                    onChange={(e) => setCustomTags(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
-                    placeholder="Strategy, Co-op, Family-friendly, Party game..."
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Separate tags with commas</p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Custom Tags
+                    </label>
+                    <input
+                      type="text"
+                      value={customTags}
+                      onChange={(e) => setCustomTags(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200"
+                      placeholder="Strategy, Co-op, Family-friendly, Party game..."
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Separate tags with commas</p>
+                  </div>
 
-                <button
-                  onClick={handleAddToCollection}
-                  disabled={adding}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                >
-                  {adding ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                      Adding to {isWishlist ? 'Wishlist' : 'Collection'}...
-                    </div>
-                  ) : (
-                    `Add to ${isWishlist ? 'Wishlist' : 'Collection'}`
-                  )}
-                </button>
+                  <button
+                    onClick={handleAddToCollection}
+                    disabled={adding}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                  >
+                    {adding ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                        Adding to {isWishlist ? 'Wishlist' : 'Collection'}...
+                      </div>
+                    ) : (
+                      `Add to ${isWishlist ? 'Wishlist' : 'Collection'}`
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
+            {!user && (
+              <div className="border-t pt-8 text-center">
+                <h3 className="text-xl font-bold mb-4 text-gray-900">Sign In to Add Games</h3>
+                <p className="text-gray-600 mb-4">Create an account to save this game to your collection.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -337,10 +617,15 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [sortBy, setSortBy] = useState('date_added');
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchCollection();
-  }, [isWishlist]);
+    if (user) {
+      fetchCollection();
+    } else {
+      setLoading(false);
+    }
+  }, [isWishlist, user]);
 
   const fetchCollection = async () => {
     setLoading(true);
@@ -364,6 +649,21 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
     }
   };
 
+  if (!user) {
+    return <LoginPrompt onLogin={() => {}} />;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your {isWishlist ? 'wishlist' : 'collection'}...</p>
+        </div>
+      </div>
+    );
+  }
+
   const filteredAndSortedCollection = collection
     .filter(item => 
       item.game.name.toLowerCase().includes(filter.toLowerCase()) ||
@@ -381,17 +681,6 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
           return new Date(b.date_added) - new Date(a.date_added);
       }
     });
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your {isWishlist ? 'wishlist' : 'collection'}...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (collection.length === 0) {
     return (
@@ -539,24 +828,11 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
 function App() {
   const [selectedGame, setSelectedGame] = useState(null);
   const [activeTab, setActiveTab] = useState('search');
-  const [collectionCount, setCollectionCount] = useState(0);
-  const [wishlistCount, setWishlistCount] = useState(0);
-
-  useEffect(() => {
-    fetchCounts();
-  }, []);
+  const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login' });
+  const { user, loading } = useAuth();
 
   const fetchCounts = async () => {
-    try {
-      const [collectionRes, wishlistRes] = await Promise.all([
-        axios.get(`${API}/collection?is_wishlist=false`),
-        axios.get(`${API}/collection?is_wishlist=true`)
-      ]);
-      setCollectionCount(collectionRes.data.length);
-      setWishlistCount(wishlistRes.data.length);
-    } catch (error) {
-      console.error('Error fetching counts:', error);
-    }
+    // This will trigger a re-fetch in the Collection components
   };
 
   const handleGameSelect = (game) => {
@@ -567,10 +843,36 @@ function App() {
     fetchCounts();
   };
 
+  const openAuthModal = (mode = 'login') => {
+    setAuthModal({ isOpen: true, mode });
+  };
+
+  const closeAuthModal = () => {
+    setAuthModal({ ...authModal, isOpen: false });
+  };
+
+  const switchAuthMode = () => {
+    setAuthModal({ 
+      ...authModal, 
+      mode: authModal.mode === 'login' ? 'register' : 'login' 
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 text-lg">Loading GameShelf...</p>
+        </div>
+      </div>
+    );
+  }
+
   const tabs = [
     { id: 'search', label: 'Discover', icon: '🔍', count: null },
-    { id: 'collection', label: 'Collection', icon: '📚', count: collectionCount },
-    { id: 'wishlist', label: 'Wishlist', icon: '⭐', count: wishlistCount }
+    { id: 'collection', label: 'Collection', icon: '📚', count: user?.collection_count || 0 },
+    { id: 'wishlist', label: 'Wishlist', icon: '⭐', count: user?.wishlist_count || 0 }
   ];
 
   return (
@@ -582,30 +884,53 @@ function App() {
         
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0 hero-pattern"></div>
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.1"%3E%3Ccircle cx="30" cy="30" r="4"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]"></div>
         </div>
 
         <div className="relative container mx-auto px-4 py-24">
-          <div className="text-center text-white">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
-              GameShelf
-            </h1>
-            <p className="text-xl md:text-3xl mb-8 text-blue-100 max-w-4xl mx-auto leading-relaxed">
-              Your personal Steam library for board games. Discover, catalog, and organize your collection with rich BoardGameGeek data.
-            </p>
-            <div className="flex flex-wrap justify-center gap-6 text-blue-200">
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">🎲</span>
-                <span>10,000+ Games</span>
+          <div className="flex justify-between items-center mb-12">
+            <div className="text-white">
+              <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+                GameShelf
+              </h1>
+              <p className="text-xl md:text-3xl mb-8 text-blue-100 max-w-4xl leading-relaxed">
+                Your personal Steam library for board games. Discover, catalog, and organize your collection with rich BoardGameGeek data.
+              </p>
+              <div className="flex flex-wrap gap-6 text-blue-200">
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl">🎲</span>
+                  <span>10,000+ Games</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl">📊</span>
+                  <span>Rich Game Data</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl">🚀</span>
+                  <span>Instant Search</span>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">📊</span>
-                <span>Rich Game Data</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">🚀</span>
-                <span>Instant Search</span>
-              </div>
+            </div>
+            
+            <div className="hidden md:block">
+              {user ? (
+                <UserMenu />
+              ) : (
+                <div className="space-x-4">
+                  <button
+                    onClick={() => openAuthModal('login')}
+                    className="bg-white/10 backdrop-blur-sm text-white px-6 py-3 rounded-xl hover:bg-white/20 transition-all duration-200"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => openAuthModal('register')}
+                    className="bg-white text-blue-600 px-6 py-3 rounded-xl hover:bg-blue-50 transition-all duration-200 font-semibold"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -614,28 +939,44 @@ function App() {
       {/* Navigation */}
       <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200">
         <div className="container mx-auto px-4">
-          <div className="flex justify-center space-x-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-6 font-semibold text-sm transition-all duration-200 rounded-t-2xl relative ${
-                  activeTab === tab.id
-                    ? 'bg-white text-blue-600 shadow-lg -mb-px border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  {tab.count !== null && tab.count > 0 && (
-                    <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-                      {tab.count}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
+          <div className="flex justify-between items-center">
+            <div className="flex space-x-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-4 px-6 font-semibold text-sm transition-all duration-200 rounded-t-2xl relative ${
+                    activeTab === tab.id
+                      ? 'bg-white text-blue-600 shadow-lg -mb-px border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.count !== null && tab.count > 0 && (
+                      <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+                        {tab.count}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            {/* Mobile auth buttons */}
+            <div className="md:hidden">
+              {user ? (
+                <UserMenu />
+              ) : (
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="text-gray-600 hover:text-gray-900 font-medium"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -692,6 +1033,14 @@ function App() {
         )}
       </div>
 
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModal.isOpen}
+        onClose={closeAuthModal}
+        mode={authModal.mode}
+        onSwitchMode={switchAuthMode}
+      />
+
       {/* Game Details Modal */}
       {selectedGame && (
         <GameDetailsModal
@@ -707,7 +1056,7 @@ function App() {
           <h3 className="text-2xl font-bold mb-4">GameShelf</h3>
           <p className="text-gray-400 mb-6">Your digital board game library, powered by BoardGameGeek</p>
           <div className="flex justify-center space-x-8 text-sm text-gray-400">
-            <span>🎲 {collectionCount + wishlistCount} Games Tracked</span>
+            <span>🎲 {user ? `${user.collection_count + user.wishlist_count} Games Tracked` : 'Track Your Games'}</span>
             <span>📚 BGG Integration</span>
             <span>⚡ Instant Search</span>
           </div>
@@ -717,4 +1066,13 @@ function App() {
   );
 }
 
-export default App;
+// Main App with Auth Provider
+function GameShelfApp() {
+  return (
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  );
+}
+
+export default GameShelfApp;
