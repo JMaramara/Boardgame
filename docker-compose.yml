@@ -1,37 +1,26 @@
 version: '3.8'
 
 services:
-  # This service is your FastAPI backend application.
-  backend:
-    build: .  # It builds from the Dockerfile in the current directory.
-    volumes:
-      - ./backend:/app/backend # This links your local 'backend' folder to the container for live code updates.
+  # This is your main application service, which runs Nginx and the Python backend together.
+  app:
+    build: .
+    ports:
+      - "80:80" # We map our local port 80 to the container's Nginx port 80.
     environment:
-      # These are the environment variables your server.py needs.
+      # Pass the database connection details to your server.py
       - MONGO_URL=mongodb://mongo:27017/
       - DB_NAME=boardgame_db
       - JWT_SECRET_KEY=a-super-secret-key-you-should-change-later
     depends_on:
-      - mongo # This ensures the database is started before the backend.
+      - mongo
 
-  # This service is your MongoDB database.
+  # This is the MongoDB database service. It remains the same.
   mongo:
-    image: mongo:latest # It uses the official MongoDB image from Docker Hub.
+    image: mongo:latest
     ports:
-      - "27017:27017" # This lets you connect to the database from your computer if you need to.
+      - "27017:27017"
     volumes:
-      - mongo-data:/data/db # This saves your database data so it isn't lost when you stop the container.
+      - mongo-data:/data/db
 
-  # This is the Nginx web server, which acts as a reverse proxy.
-  nginx:
-    image: nginx:stable-alpine
-    ports:
-      - "80:80" # This makes your application accessible at http://localhost
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf # It uses your custom nginx configuration.
-    depends_on:
-      - backend # It waits for the backend to be ready before starting.
-
-# This defines the named volume we're using to store database data.
 volumes:
   mongo-data:
