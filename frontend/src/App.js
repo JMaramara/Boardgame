@@ -951,7 +951,7 @@ const Collection = ({ isWishlist = false, onRefresh }) => {
                   Added {new Date(item.date_added).toLocaleDateString()}
                 </span>
                 <button
-                  onClick={() => removeFromCollection(item.id)}
+                  onClick={() => removeFromCollection(item.id, item.game.name)}
                   className="flex items-center space-x-1 text-red-500 hover:text-red-700 hover:bg-red-50 text-sm font-medium transition-all duration-200 px-3 py-2 rounded-lg border border-red-200 hover:border-red-300"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
