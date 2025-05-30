@@ -441,23 +441,23 @@ async def remove_from_collection(collection_id: str, current_user: Optional[User
 
 @api_router.put("/collection/{collection_id}", response_model=CollectionGame)
 async def update_collection_item(
-    collection_id: str, 
-    user_notes: Optional[str] = None, 
-    custom_tags: List[str] = None,
+    collection_id: str,
+    update_data: Dict[str, Any],
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Update collection item notes and tags"""
     user_id = current_user.id if current_user else "anonymous"
     
-    update_data = {}
-    if user_notes is not None:
-        update_data["user_notes"] = user_notes
-    if custom_tags is not None:
-        update_data["custom_tags"] = custom_tags
+    # Extract valid fields from update_data
+    allowed_fields = {"user_notes", "custom_tags"}
+    filtered_update = {k: v for k, v in update_data.items() if k in allowed_fields}
+    
+    if not filtered_update:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
     
     result = await db.collection.find_one_and_update(
         {"id": collection_id, "user_id": user_id},
-        {"$set": update_data},
+        {"$set": filtered_update},
         return_document=True
     )
     
