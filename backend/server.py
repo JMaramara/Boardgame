@@ -84,6 +84,87 @@ class AddToCollectionRequest(BaseModel):
     wishlist_priority: Optional[int] = None
 
 
+# User Authentication Models
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=30)
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class User(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    username: str
+    email: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class UserProfile(BaseModel):
+    id: str
+    username: str
+    email: str
+    created_at: datetime
+    collection_count: int = 0
+    wishlist_count: int = 0
+    is_public: bool = False
+
+
+# Authentication Helper Functions
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+    
+    user = await db.users.find_one({"username": username})
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return User(**user)
+
+# Optional auth - for endpoints that work with or without auth
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))):
+    if credentials is None:
+        return None
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        user = await db.users.find_one({"username": username})
+        if user is None:
+            return None
+        return User(**user)
+    except jwt.PyJWTError:
+        return None
+
+
 # BGG API Integration
 class BGGService:
     BASE_URL = "https://boardgamegeek.com/xmlapi2"
